@@ -1,35 +1,7 @@
-# STEP 1
-
-# Generate video
-# Amount of frames = 150
-# Video length = 5 seconds
-# FPS = 25
-# Resolution = 320x240
-
-# Background
-# Background generates only ones and doesn't change
-# Black-purple gradient from (25. 10, 40) to (60, 15, 70)
-
-# Algorithm for creating a texture
-# - create an array of gaussian noise with size of frame (seed = 13)
-# - apply gaussian filter (sigma = 16)
-# - normalize blured frame into [-1, 1] and multiply to 15
-# - clip each chanel to [0, 255]
-
-# Draw geometric figures at created background according to variant
-
-# Move them according analytical traectory (coordinates of figure's center must be stored separately)
-
-# Add noise according to variant
-
-# Change RGB to YCbCr and modify
-
-# Save video as one raw file (YUV420p - planar), fps=25
-
-# Save file with exact coordinates/vectors of movement of objects by frames
-
+import os
 import cv2
 import math
+import subprocess
 import numpy as np
 from pathlib import Path
 
@@ -118,47 +90,88 @@ coordinates_circle_one = []
 coordinates_circle_two = []
 coordinates_square = []
 
-with open("results/video_yuv420p.yuv", "wb") as yuv_file:
-    for i in range(AMOUNT_OF_FRAMES):
-        background_copy = background.copy()
+noise_levels = [0.002, 0.005, 0.01, 0.02, 0.04]
+QP = [16, 22, 28, 34, 40]
+GOP = 8
 
-        noise_levels = [0.002, 0.005, 0.01, 0.02, 0.04]
-        noisy_background = add_snp_noise(background_copy, noise_levels[i % len(noise_levels)])
+for j in range(len(noise_levels)):
+    vfj_path = Path(f"results/QP{QP[j]}_NOISE{noise_levels[j]}")
+    vfj_path.mkdir(parents=True, exist_ok=True)
 
-        cords_c1 = trace_circle_one(i)
-        cords_c2 = trace_circle_two(i)
-        cords_sq = trace_square(i)
+    with open(f"results/QP{QP[j]}_NOISE{noise_levels[j]}/video_yuv420p.yuv", "wb") as yuv_file:
+        for i in range(AMOUNT_OF_FRAMES):
+            background_copy = background.copy()
 
-        cv2.circle(noisy_background, center=cords_c1, radius=CIRCLE_ONE_RADIUS, color=CIRCLE_ONE_COLOR)
-        cv2.circle(noisy_background, center=cords_c2, radius=CIRCLE_TWO_RADIUS, color=CIRCLE_TWO_COLOR)
-        cv2.rectangle(noisy_background, pt1=cords_sq[0], pt2=cords_sq[1], color=SQUARE_COLOR)
+            noisy_background = add_snp_noise(background_copy, noise_levels[i % len(noise_levels)])
 
-        coordinates_circle_one.append(cords_c1)
-        coordinates_circle_two.append(cords_c2)
-        coordinates_square.append(cords_sq)
+            cords_c1 = trace_circle_one(i)
+            cords_c2 = trace_circle_two(i)
+            cords_sq = trace_square(i)
 
-        ycrcb_background = cv2.cvtColor(noisy_background, cv2.COLOR_BGR2YCrCb)
-        Y = ycrcb_background[:, :, 0]
-        Cr = ycrcb_background[:, :, 1]
-        Cb = ycrcb_background[:, :, 2]
+            cv2.circle(noisy_background, center=cords_c1, radius=CIRCLE_ONE_RADIUS, color=CIRCLE_ONE_COLOR)
+            cv2.circle(noisy_background, center=cords_c2, radius=CIRCLE_TWO_RADIUS, color=CIRCLE_TWO_COLOR)
+            cv2.rectangle(noisy_background, pt1=cords_sq[0], pt2=cords_sq[1], color=SQUARE_COLOR)
 
-        Cr_420 = Cr[::2, ::2]
-        Cb_420 = Cb[::2, ::2]
+            coordinates_circle_one.append(cords_c1)
+            coordinates_circle_two.append(cords_c2)
+            coordinates_square.append(cords_sq)
 
-        yuv_file.write(Y.tobytes())
-        yuv_file.write(Cb_420.tobytes())
-        yuv_file.write(Cr_420.tobytes())
+            ycrcb_background = cv2.cvtColor(noisy_background, cv2.COLOR_BGR2YCrCb)
+            Y = ycrcb_background[:, :, 0]
+            Cr = ycrcb_background[:, :, 1]
+            Cb = ycrcb_background[:, :, 2]
 
-        cv2.imwrite(f"videoframes/{i}_background_with_figures.png", noisy_background)
+            Cr_420 = Cr[::2, ::2]
+            Cb_420 = Cb[::2, ::2]
 
-with open("results/coordinates_circle_one.txt", "w") as file:
-    for i in coordinates_circle_one:
-        file.write(str(i) + "\n")
+            yuv_file.write(Y.tobytes())
+            yuv_file.write(Cb_420.tobytes())
+            yuv_file.write(Cr_420.tobytes())
 
-with open("results/coordinates_circle_two.txt", "w") as file:
-    for i in coordinates_circle_two:
-        file.write(str(i) + "\n")
+            vfi_path = Path(f"videoframes/QP{QP[j]}_NOISE{noise_levels[j]}")
+            vfi_path.mkdir(parents=True, exist_ok=True)
 
-with open("results/coordinates_sqare.txt", "w") as file:
-    for i in coordinates_square:
-        file.write(str(i) + "\n")
+            cv2.imwrite(f"videoframes/QP{QP[j]}_NOISE{noise_levels[j]}/{i}_background_with_figures.png", noisy_background)
+
+    with open(f"results/QP{QP[j]}_NOISE{noise_levels[j]}/coordinates_circle_one.txt", "w") as file:
+        for i in coordinates_circle_one:
+            file.write(str(i) + "\n")
+
+    with open(f"results/QP{QP[j]}_NOISE{noise_levels[j]}/coordinates_circle_two.txt", "w") as file:
+        for i in coordinates_circle_two:
+            file.write(str(i) + "\n")
+
+    with open(f"results/QP{QP[j]}_NOISE{noise_levels[j]}/coordinates_sqare.txt", "w") as file:
+        for i in coordinates_square:
+            file.write(str(i) + "\n")
+
+    subprocess.run([
+        "ffmpeg", "-f", "rawvideo", 
+        "-pix_fmt", "yuv420p", 
+        "-s", "320x240", 
+        "-r", "25", 
+        "-i", f"results/QP{QP[j]}_NOISE{noise_levels[j]}/video_yuv420p.yuv", 
+        "-c:v", "libx264", 
+        "-qp", f"{QP[j]}", 
+        "-bf", "0", 
+        "-g", "8", 
+        "-sc_threshold", "0", 
+        f"results/QP{QP[j]}_NOISE{noise_levels[j]}/output.mp4"
+    ])
+
+    file_path = f"results/QP{QP[j]}_NOISE{noise_levels[j]}/output.mp4"
+    file_size = os.path.getsize(file_path)
+    
+    beatrate = (file_size * 8 * FPS) / (1000 * AMOUNT_OF_FRAMES)
+    print(f"QP: {QP[j]}\nNOISE LEVEL:{noise_levels[j]}\nBEATRATE: {beatrate}\n\n")
+
+    subprocess.run([
+        "ffmpeg", "-i", "results/QP16_NOISE0.002/output.mp4", 
+        "-f", "rawvideo", 
+        "-pix_fmt", "yuv420p", 
+        "-s", "320x240", 
+        "-r", "25", 
+        "-i", "results/QP16_NOISE0.002/video_yuv420p.yuv", 
+        "-lavfi", "psnr", 
+        "-f", "null", "-"
+    ])
