@@ -109,21 +109,21 @@ for j in range(len(noise_levels)):
         for i in range(AMOUNT_OF_FRAMES):
             background_copy = background.copy()
 
-            noisy_background = add_snp_noise(background_copy, noise_levels[j], generator)
-
             cords_c1 = trace_circle_one(i)
             cords_c2 = trace_circle_two(i)
             cords_sq = trace_square(i)
 
-            cv2.circle(noisy_background, center=cords_c1, radius=CIRCLE_ONE_RADIUS, color=CIRCLE_ONE_COLOR, thickness=-1)
-            cv2.circle(noisy_background, center=cords_c2, radius=CIRCLE_TWO_RADIUS, color=CIRCLE_TWO_COLOR, thickness=-1)
-            cv2.rectangle(noisy_background, pt1=cords_sq[0], pt2=cords_sq[1], color=SQUARE_COLOR, thickness=-1)
+            cv2.circle(background_copy, center=cords_c1, radius=CIRCLE_ONE_RADIUS, color=CIRCLE_ONE_COLOR, thickness=-1)
+            cv2.circle(background_copy , center=cords_c2, radius=CIRCLE_TWO_RADIUS, color=CIRCLE_TWO_COLOR, thickness=-1)
+            cv2.rectangle(background_copy, pt1=cords_sq[0], pt2=cords_sq[1], color=SQUARE_COLOR, thickness=-1)
+
+            noisy_image = add_snp_noise(background_copy, noise_levels[j], generator)
 
             coordinates_circle_one.append(cords_c1)
             coordinates_circle_two.append(cords_c2)
             coordinates_square.append(cords_sq)
 
-            ycrcb_background = cv2.cvtColor(noisy_background, cv2.COLOR_BGR2YCrCb)
+            ycrcb_background = cv2.cvtColor(noisy_image, cv2.COLOR_BGR2YCrCb)
             Y = ycrcb_background[:, :, 0]
             Cr = ycrcb_background[:, :, 1]
             Cb = ycrcb_background[:, :, 2]
@@ -138,7 +138,7 @@ for j in range(len(noise_levels)):
             vfi_path = Path(f"videoframes/QP{QP[j]}_NOISE{noise_levels[j]}")
             vfi_path.mkdir(parents=True, exist_ok=True)
 
-            cv2.imwrite(f"videoframes/QP{QP[j]}_NOISE{noise_levels[j]}/{i}_background_with_figures.png", noisy_background)
+            cv2.imwrite(f"videoframes/QP{QP[j]}_NOISE{noise_levels[j]}/{i}_background_with_figures.png", noisy_image)
 
     with open(f"results/QP{QP[j]}_NOISE{noise_levels[j]}/coordinates_circle_one.txt", "w") as file:
         for i in coordinates_circle_one:
