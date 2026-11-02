@@ -1,7 +1,9 @@
 import os
+import re
 import cv2
 import math
 import subprocess
+import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 
@@ -62,22 +64,24 @@ SQUARE_SIZE = 26
 SQUARE_COLOR = (255, 210, 60)[::-1]
 
 def trace_circle_one(t):
-    return (40 + 195 * t % WIDTH, 130)
+    t /= AMOUNT_OF_FRAMES
+    return (int(40 + 195 * t % WIDTH), 130)
 
 def trace_circle_two(t):
-    return (280 - 195 * t % WIDTH, 130)
+    t /= AMOUNT_OF_FRAMES
+    return (int(280 - 195 * t % WIDTH), 130)
 
 def trace_square(t, size=SQUARE_SIZE):
+    t /= AMOUNT_OF_FRAMES
     return (160, int(60 + 30 * math.sin(2 * math.pi * t)) % HEIGHT) , (160 + size, int(60 + 30 * math.sin(2 * math.pi * t) + size) % HEIGHT)
 
-def add_snp_noise(img, amount, salt_vs_pepper=0.5):
+def add_snp_noise(img, p, gen):
     noisy = img.copy()
 
-    random_values = generator.random((HEIGHT, WIDTH))
+    random_values = gen.random((HEIGHT, WIDTH))
 
-    pepper = random_values < amount * (1 - salt_vs_pepper)
-    salt = random_values >= 1 - amount * salt_vs_pepper
-
+    pepper = random_values < p / 2
+    salt = ((random_values >= p / 2) & (random_values < p))
     noisy[pepper] = 0
     noisy[salt] = 255
 
@@ -94,6 +98,9 @@ noise_levels = [0.002, 0.005, 0.01, 0.02, 0.04]
 QP = [16, 22, 28, 34, 40]
 GOP = 8
 
+beatrates = []
+psnr_ffmpeg = []
+
 for j in range(len(noise_levels)):
     vfj_path = Path(f"results/QP{QP[j]}_NOISE{noise_levels[j]}")
     vfj_path.mkdir(parents=True, exist_ok=True)
@@ -102,15 +109,15 @@ for j in range(len(noise_levels)):
         for i in range(AMOUNT_OF_FRAMES):
             background_copy = background.copy()
 
-            noisy_background = add_snp_noise(background_copy, noise_levels[i % len(noise_levels)])
+            noisy_background = add_snp_noise(background_copy, noise_levels[j], generator)
 
             cords_c1 = trace_circle_one(i)
             cords_c2 = trace_circle_two(i)
             cords_sq = trace_square(i)
 
-            cv2.circle(noisy_background, center=cords_c1, radius=CIRCLE_ONE_RADIUS, color=CIRCLE_ONE_COLOR)
-            cv2.circle(noisy_background, center=cords_c2, radius=CIRCLE_TWO_RADIUS, color=CIRCLE_TWO_COLOR)
-            cv2.rectangle(noisy_background, pt1=cords_sq[0], pt2=cords_sq[1], color=SQUARE_COLOR)
+            cv2.circle(noisy_background, center=cords_c1, radius=CIRCLE_ONE_RADIUS, color=CIRCLE_ONE_COLOR, thickness=-1)
+            cv2.circle(noisy_background, center=cords_c2, radius=CIRCLE_TWO_RADIUS, color=CIRCLE_TWO_COLOR, thickness=-1)
+            cv2.rectangle(noisy_background, pt1=cords_sq[0], pt2=cords_sq[1], color=SQUARE_COLOR, thickness=-1)
 
             coordinates_circle_one.append(cords_c1)
             coordinates_circle_two.append(cords_c2)
@@ -163,15 +170,42 @@ for j in range(len(noise_levels)):
     file_size = os.path.getsize(file_path)
     
     beatrate = (file_size * 8 * FPS) / (1000 * AMOUNT_OF_FRAMES)
+    beatrates.append(beatrate)
     print(f"QP: {QP[j]}\nNOISE LEVEL:{noise_levels[j]}\nBEATRATE: {beatrate}\n\n")
 
-    subprocess.run([
-        "ffmpeg", "-i", "results/QP16_NOISE0.002/output.mp4", 
+    result = subprocess.run([
+        "ffmpeg", "-i", f"results/QP{QP[j]}_NOISE{noise_levels[j]}/output.mp4", 
         "-f", "rawvideo", 
         "-pix_fmt", "yuv420p", 
         "-s", "320x240", 
         "-r", "25", 
-        "-i", "results/QP16_NOISE0.002/video_yuv420p.yuv", 
+        "-i", f"results/QP{QP[j]}_NOISE{noise_levels[j]}/video_yuv420p.yuv", 
         "-lavfi", "psnr", 
         "-f", "null", "-"
-    ])
+    ], 
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+    encoding="utf-8",
+    errors="replace"
+    )
+
+    Path(f"results/QP{QP[j]}_NOISE{noise_levels[j]}/op.txt").write_text(result.stdout, encoding="utf-8")
+
+    if result.returncode != 0:
+        print(f"ffmpeg failure: {result.stdout}")
+    else:
+        matches = re.findall(r"\baverage:([+-]?(?:\d+(?:\.\d*)?|\.\d+|inf|nan))", result.stdout, re.IGNORECASE)
+        if matches:
+            psnr_ffmpeg.append(matches[-1])
+            print(f"PSNR average ffmpeg: {matches[-1]}")
+
+        else:
+            print("Average value wasn't find")
+
+plt.plot(beatrates, psnr_ffmpeg)
+plt.title("Кривая зависимости PSNR от битрейта по всем значениям QP при GOP = 8")
+plt.xlabel("Bitrate")
+plt.ylabel("PSNR")
+
+plt.show()
