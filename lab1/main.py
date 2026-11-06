@@ -1,11 +1,12 @@
+import math
 import os
 import re
-import cv2
-import math
 import subprocess
+from pathlib import Path
+
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
 
 
 def normalize(arr, a, b):
@@ -170,9 +171,10 @@ for j in range(len(noise_levels)):
 
             noisy_image = add_snp_noise(background_copy, noise_levels[j], generator)
 
-            coordinates_circle_one.append(cords_c1)
-            coordinates_circle_two.append(cords_c2)
-            coordinates_square.append(cords_sq)
+            if first_time:
+                coordinates_circle_one.append(cords_c1)
+                coordinates_circle_two.append(cords_c2)
+                coordinates_square.append(cords_sq)
 
             ycrcb_background = cv2.cvtColor(noisy_image, cv2.COLOR_BGR2YCrCb)
             Y = ycrcb_background[:, :, 0]
@@ -182,10 +184,9 @@ for j in range(len(noise_levels)):
             Cr_420 = downsample(Cr)
             Cb_420 = downsample(Cb)
 
-            if first_time:
-                yuv_file.write(Y.tobytes())
-                yuv_file.write(Cb_420.tobytes())
-                yuv_file.write(Cr_420.tobytes())
+            yuv_file.write(Y.tobytes())
+            yuv_file.write(Cb_420.tobytes())
+            yuv_file.write(Cr_420.tobytes())
 
             vfi_path = Path(f"videoframes/NOISE_{noise_levels[j]}")
             vfi_path.mkdir(parents=True, exist_ok=True)
@@ -197,15 +198,15 @@ for j in range(len(noise_levels)):
 
     # Сохраняем координаты для каждой из фигур
     if first_time:
-        with open(f"results/coordinates_circle_one.txt", "w") as file:
+        with open("results/coordinates_circle_one.txt", "w") as file:
             for i in coordinates_circle_one:
                 file.write(str(i) + "\n")
 
-        with open(f"results/coordinates_circle_two.txt", "w") as file:
+        with open("results/coordinates_circle_two.txt", "w") as file:
             for i in coordinates_circle_two:
                 file.write(str(i) + "\n")
 
-        with open(f"results/coordinates_sqare.txt", "w") as file:
+        with open("results/coordinates_sqare.txt", "w") as file:
             for i in coordinates_square:
                 file.write(str(i) + "\n")
     first_time = False
@@ -227,7 +228,7 @@ for q in QP:
             "-r",
             f"{FPS}",
             "-i",
-            f"results/NOISE_0.01/video_yuv420p.yuv",
+            "results/NOISE_0.01/video_yuv420p.yuv",
             "-c:v",
             "libx264",
             "-qp",
@@ -275,7 +276,7 @@ for q in QP:
             "-r",
             f"{FPS}",
             "-i",
-            f"results/NOISE_0.01/video_yuv420p.yuv",
+            "results/NOISE_0.01/video_yuv420p.yuv",
             "-lavfi",
             "psnr",
             "-f",
@@ -314,5 +315,5 @@ plt.title("Кривая зависимости PSNR от битрейта по �
 plt.xlabel("PSNR")
 plt.ylabel("Bitrate")
 
-plt.savefig(f"results/Bitrate2PSNR.png")
+plt.savefig("results/Bitrate2PSNR.png")
 plt.close()
